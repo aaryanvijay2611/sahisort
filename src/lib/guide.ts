@@ -1,9 +1,33 @@
 /**
- * Configured waste-management guide. Passages include both national statutory frameworks
- * and campus/locality-specific guides. Retrieval prioritizes local rules when both match.
+ * Waste-management guide used by SahiSort.
+ *
+ * STRUCTURE
+ * ---------
+ * Every passage has:
+ *   id           – stable kebab-case identifier used in citations
+ *   title        – short human-readable label
+ *   category     – one of the five stream categories defined in WasteCategory
+ *   scope        – "national" (Indian statute) | "local" (campus/locality-specific)
+ *   source       – document name + section
+ *   url          – official source URL
+ *   topic        – brief topic label (legacy, kept for display)
+ *   keywords     – retrieval tokens
+ *   text         – VERBATIM or official-summary text (do NOT paraphrase in new passages)
+ *   prep_steps   – array of preparation steps explicitly stated in or directly supported by the text
+ *
+ * LOCAL GUIDE SETUP
+ * -----------------
+ * 1. Edit GUIDE_META below with your locality name, guide title and URL.
+ * 2. Add passages with scope: "local" in the LOCAL PASSAGES section.
+ * 3. Mark each with // TODO: paste verbatim from supplied guide if not yet filled.
+ * 4. Local passages are prioritised over national ones when both match.
+ *
+ * CATEGORIES
+ * ----------
+ * "Dry Waste" | "Wet Waste" | "Domestic Hazardous" | "E-Waste" | "Sanitary"
  */
 
-export type DisposalCategory =
+export type WasteCategory =
   | "Dry Waste"
   | "Wet Waste"
   | "Domestic Hazardous"
@@ -13,28 +37,30 @@ export type DisposalCategory =
 export type GuidePassage = {
   id: string;
   title: string;
-  category: DisposalCategory;
+  category: WasteCategory;
+  scope: "national" | "local";
   source: string;
   section: string;
   url: string;
-  topic?: string;
+  topic: string;
   keywords: string[];
   text: string;
-  prep_steps?: string[];
-  scope: "national" | "local";
+  prep_steps: string[];
 };
 
+// ─── Guide Metadata ─────────────────────────────────────────────────────────
+// Update these fields with your locality's details.
 export const GUIDE_META = {
-  locality: "Green Campus / Powai Locality",
-  guide_title: "Campus & Locality Waste Segregation and Disposal Guide",
-  guide_source: "https://cpcb.nic.in/uploads/MSW/SWM_2016.pdf",
-  last_updated: "October 2026",
-  name: "Campus & National Waste Segregation Rules",
+  locality: "India (National)", // TODO: set to your campus / locality name
+  guide_title: "India Solid Waste Management Framework",
+  guide_url: "https://cpcb.nic.in/uploads/MSW/SWM_2016.pdf", // TODO: set to your local guide URL
+  last_updated: "2024-01", // TODO: update when local guide is updated
   jurisdiction:
-    "India — National Framework with Local Campus & Municipal Priorities",
-  note: "Local campus rules take precedence over general national guidelines. Passages are statutory and official verbatim rules.",
+    "India — national rules. Municipal collection schedules and facilities are not covered.",
+  note: "Passages are summaries of official Indian statutory rules. Always check your municipality's specific instructions.",
 };
 
+// ─── Statutory references ────────────────────────────────────────────────────
 const SWM = "Solid Waste Management Rules, 2016 (MoEFCC)";
 const SWM_URL = "https://cpcb.nic.in/uploads/MSW/SWM_2016.pdf";
 const PWM = "Plastic Waste Management Rules, 2016 (as amended 2021–2022)";
@@ -44,163 +70,37 @@ const EW_URL = "https://cpcb.nic.in/e-waste/";
 const BW = "Battery Waste Management Rules, 2022";
 const BW_URL = "https://cpcb.nic.in/battery-waste/";
 
-export const GUIDE: GuidePassage[] = [
-  // =========================================================================
-  // LOCAL GUIDE PLACEHOLDERS (Campus / Locality Specific)
-  // TODO: paste verbatim from supplied guide. Do not invent local rules, bin colours, or schedules.
-  // =========================================================================
-  {
-    id: "local-dry-waste",
-    title: "Local Dry Waste Segregation",
-    category: "Dry Waste",
-    source: "Campus & Locality Waste Management Directive",
-    section: "Section 3.1: Dry Recyclables",
-    url: GUIDE_META.guide_source,
-    topic: "Local Dry Waste",
-    keywords: [
-      "dry",
-      "paper",
-      "cardboard",
-      "plastic",
-      "bottle",
-      "can",
-      "tin",
-      "glass",
-      "carton",
-      "box",
-      "packaging",
-      "wrapper",
-    ],
-    text: "// TODO: paste verbatim from supplied guide",
-    prep_steps: [
-      "// TODO: paste verbatim prep step from supplied guide",
-    ],
-    scope: "local",
-  },
-  {
-    id: "local-wet-waste",
-    title: "Local Wet & Organic Waste Management",
-    category: "Wet Waste",
-    source: "Campus & Locality Waste Management Directive",
-    section: "Section 3.2: Biodegradable Streams",
-    url: GUIDE_META.guide_source,
-    topic: "Local Wet Waste",
-    keywords: [
-      "wet",
-      "food",
-      "organic",
-      "peel",
-      "vegetable",
-      "fruit",
-      "leftovers",
-      "compost",
-      "biodegradable",
-    ],
-    text: "// TODO: paste verbatim from supplied guide",
-    prep_steps: [
-      "// TODO: paste verbatim prep step from supplied guide",
-    ],
-    scope: "local",
-  },
-  {
-    id: "local-hazardous-waste",
-    title: "Local Domestic Hazardous & Chemical Waste",
-    category: "Domestic Hazardous",
-    source: "Campus & Locality Waste Management Directive",
-    section: "Section 4.1: Hazardous Materials",
-    url: GUIDE_META.guide_source,
-    topic: "Local Hazardous Waste",
-    keywords: [
-      "hazardous",
-      "chemical",
-      "paint",
-      "pesticide",
-      "cfl",
-      "bulb",
-      "mercury",
-      "medicine",
-      "aerosol",
-      "spray",
-      "battery",
-    ],
-    text: "// TODO: paste verbatim from supplied guide",
-    prep_steps: [
-      "// TODO: paste verbatim prep step from supplied guide",
-    ],
-    scope: "local",
-  },
-  {
-    id: "local-e-waste",
-    title: "Local Electrical & Electronic Equipment Disposal",
-    category: "E-Waste",
-    source: "Campus & Locality Waste Management Directive",
-    section: "Section 4.2: Electronic Drop-off",
-    url: GUIDE_META.guide_source,
-    topic: "Local E-Waste",
-    keywords: [
-      "electronic",
-      "phone",
-      "charger",
-      "cable",
-      "laptop",
-      "appliance",
-      "e-waste",
-      "battery-powered",
-    ],
-    text: "// TODO: paste verbatim from supplied guide",
-    prep_steps: [
-      "// TODO: paste verbatim prep step from supplied guide",
-    ],
-    scope: "local",
-  },
-  {
-    id: "local-sanitary-waste",
-    title: "Local Sanitary & Medical Hygiene Protocol",
-    category: "Sanitary",
-    source: "Campus & Locality Waste Management Directive",
-    section: "Section 5: Sanitary Hygiene",
-    url: GUIDE_META.guide_source,
-    topic: "Local Sanitary Waste",
-    keywords: [
-      "sanitary",
-      "diaper",
-      "pad",
-      "tampon",
-      "tissue",
-      "hygiene",
-    ],
-    text: "// TODO: paste verbatim from supplied guide",
-    prep_steps: [
-      "// TODO: paste verbatim prep step from supplied guide",
-    ],
-    scope: "local",
-  },
+// ─── Minimum retrieval score to attempt LLM call ────────────────────────────
+// If the best-scoring passage scores below this threshold, skip LLM entirely
+// and return status "not_covered".
+export const MIN_RETRIEVAL_SCORE = 2;
 
-  // =========================================================================
-  // NATIONAL STATUTORY PASSAGES (India SWM, PWM, E-Waste, Battery Waste Rules)
-  // =========================================================================
+// ─── NATIONAL PASSAGES ───────────────────────────────────────────────────────
+
+const NATIONAL: GuidePassage[] = [
   {
     id: "swm-segregation",
-    title: "Segregation at Source",
-    category: "Dry Waste",
+    title: "Segregation at source",
+    category: "Dry Waste", // General guidance — assigned Dry Waste as neutral default
+    scope: "national",
     source: SWM,
-    section: "Rule 4(1)(a): Duties of waste generators",
+    section: "Rule 4 — Duties of waste generators",
     url: SWM_URL,
     topic: "Segregation at source",
     keywords: ["segregate", "wet", "dry", "hazardous", "household", "bin", "general"],
-    text: "Every waste generator shall segregate and store the waste generated by them in three separate streams namely bio-degradable, non bio-degradable and domestic hazardous wastes in suitable bins and handover segregated wastes to authorised waste pickers or waste collectors as directed or notified by the local authorities from time to time.",
+    text: "Every waste generator should segregate waste at source into three streams — biodegradable (wet), non-biodegradable (dry) and domestic hazardous — and hand it over to authorised waste pickers or collectors as directed by the local body.",
     prep_steps: [
-      "Segregate into wet, dry and domestic hazardous at source",
-      "Keep containers uncontaminated by other streams",
+      "Keep three separate labelled bins for wet, dry and domestic hazardous waste.",
+      "Hand segregated waste to your authorised waste collector.",
     ],
-    scope: "national",
   },
   {
     id: "swm-wet",
-    title: "Biodegradable & Organic Waste",
+    title: "Wet / biodegradable waste",
     category: "Wet Waste",
+    scope: "national",
     source: SWM,
-    section: "Rule 4(1)(b) & Schedule I",
+    section: "Rule 4 — Biodegradable waste",
     url: SWM_URL,
     topic: "Wet / biodegradable waste",
     keywords: [
@@ -218,30 +118,35 @@ export const GUIDE: GuidePassage[] = [
       "coffee",
       "wood",
       "bamboo",
-      "leftovers",
+      "leftover",
+      "cooked",
+      "banana",
+      "kitchen",
     ],
-    text: "Bio-degradable waste including food leftovers, vegetable and fruit peels, kitchen scraps, leaves, and garden waste must be segregated into the green/wet stream. Generators are encouraged to compost or bio-methanate organic waste at source where feasible.",
+    text: "Biodegradable waste such as food scraps, peels and garden waste belongs in the wet stream. The rules encourage composting or bio-methanation, including on-site composting where feasible.",
     prep_steps: [
-      "Drain excess liquids before placing in wet waste",
-      "Do not wrap or bag in plastic unless certified compostable",
+      "Place food scraps, peels and garden waste in the wet (green) bin.",
+      "Consider composting at home if feasible.",
     ],
-    scope: "national",
   },
   {
     id: "swm-dry",
-    title: "Dry Non-Biodegradable Recyclables",
+    title: "Dry / non-biodegradable waste",
     category: "Dry Waste",
+    scope: "national",
     source: SWM,
-    section: "Rule 4(1)(c) & Rule 3(1)(37)",
+    section: "Rule 4 — Non-biodegradable waste",
     url: SWM_URL,
     topic: "Dry / non-biodegradable waste",
     keywords: [
       "paper",
+      "newspaper",
       "cardboard",
       "plastic",
       "glass",
       "metal",
       "aluminium",
+      "foil",
       "tin",
       "can",
       "bottle",
@@ -251,24 +156,24 @@ export const GUIDE: GuidePassage[] = [
       "recyclable",
       "textile",
       "rubber",
-      "newspaper",
-      "plate",
       "ceramic",
+      "plate",
+      "broken",
     ],
-    text: "Non-biodegradable waste comprising paper, cardboard, plastics, glass, metals, rubber, ceramics and textiles shall be collected separately in a dry state and handed over to registered recycling facilities or authorised dry waste collection centers.",
+    text: "Dry waste — paper, cardboard, plastics, glass, metal, rubber and textiles — should be kept clean and separate from wet waste so it can be handed to authorised recyclers or the local body's dry-waste collection.",
     prep_steps: [
-      "Rinse and clean to remove all food or chemical residue",
-      "Ensure material is completely dry before binning",
-      "Flatten cartons, boxes and containers to conserve collection space",
+      "Rinse containers to remove food residue before placing in dry waste.",
+      "Flatten cardboard boxes to save space.",
+      "Keep dry waste separate from wet waste at all times.",
     ],
-    scope: "national",
   },
   {
     id: "swm-hazardous",
-    title: "Domestic Hazardous Waste",
+    title: "Domestic hazardous waste",
     category: "Domestic Hazardous",
+    scope: "national",
     source: SWM,
-    section: "Rule 3(1)(17) & Rule 4(1)(c)",
+    section: "Rule 4 — Domestic hazardous waste",
     url: SWM_URL,
     topic: "Domestic hazardous waste",
     keywords: [
@@ -284,63 +189,58 @@ export const GUIDE: GuidePassage[] = [
       "aerosol",
       "spray",
       "medicine",
+      "tablet",
+      "strip",
+      "pill",
       "syringe",
       "hazardous",
       "cleaner",
-      "strip",
+      "solvent",
+      "battery",
     ],
-    text: "Domestic hazardous waste means discarded paint drums, pesticide cans, compact fluorescent lamps (CFL), tube lights, expired medicines, broken mercury thermometers, used batteries, aerosol cans and other toxic chemicals. These must be stored separately and handed over at designated collection centers or to authorised hazardous waste collectors.",
+    text: "Domestic hazardous waste — for example discarded paint drums, pesticide cans, CFL bulbs, tube lights, expired medicines, broken mercury thermometers and used batteries — must be stored separately and deposited at collection points or with collectors designated by the local body.",
     prep_steps: [
-      "Store separately from dry and wet household streams",
-      "Keep in original labelled packaging where available",
-      "Do not puncture, crush or incinerate aerosol cans or pressurized containers",
+      "Do not mix with regular household waste.",
+      "Store in original containers where possible.",
+      "Deposit at the local body's designated domestic hazardous waste collection point.",
     ],
-    scope: "national",
   },
   {
     id: "swm-sanitary",
-    title: "Sanitary and Hygiene Waste",
+    title: "Sanitary waste",
     category: "Sanitary",
+    scope: "national",
     source: SWM,
-    section: "Rule 4(1)(b) & Rule 3(1)(41)",
+    section: "Rule 4 — Sanitary waste",
     url: SWM_URL,
     topic: "Sanitary waste",
-    keywords: [
-      "diaper",
-      "nappy",
-      "sanitary",
-      "pad",
-      "tampon",
-      "condom",
-      "tissue",
-      "bandage",
-      "hygiene",
-    ],
-    text: "Used sanitary waste such as diapers, sanitary towels, tampons and bandages shall be wrapped securely in the pouches provided by manufacturers or suitable wrapping paper and placed in the designated compartment of the dry-waste stream or sanitary bin, kept segregated from recyclable dry fractions.",
+    keywords: ["diaper", "nappy", "sanitary", "pad", "tampon", "condom", "tissue"],
+    text: "Used sanitary waste such as diapers and sanitary pads should be wrapped securely in the pouches provided by manufacturers or in a suitable wrapping material and placed in the dry-waste bin, kept separate from other dry recyclables.",
     prep_steps: [
-      "Wrap securely in original pouch or newspaper",
-      "Do not flush down toilets or drainage systems",
+      "Wrap used sanitary items in the original pouch or newspaper before disposal.",
+      "Place in the dry-waste bin, not with recyclable dry waste.",
     ],
-    scope: "national",
   },
   {
     id: "swm-no-burn",
-    title: "Prohibition of Open Burning and Littering",
+    title: "No burning or open dumping",
     category: "Dry Waste",
+    scope: "national",
     source: SWM,
-    section: "Rule 4(2)",
+    section: "Rule 4 — Prohibited practices",
     url: SWM_URL,
     topic: "No burning or dumping",
     keywords: ["burn", "dump", "litter", "drain", "street", "general"],
-    text: "No waste generator shall throw, burn or burry the solid waste generated by him, on streets, open public spaces outside his premises or in the drain or water bodies.",
-    scope: "national",
+    text: "Waste generators must not throw, burn or bury solid waste on streets, open public spaces, drains or water bodies.",
+    prep_steps: [],
   },
   {
     id: "swm-bulky",
-    title: "Construction, Demolition and Bulky Waste",
+    title: "Construction and bulky waste",
     category: "Dry Waste",
+    scope: "national",
     source: SWM,
-    section: "Rule 4(3) & 4(4)",
+    section: "Rule 4 — Construction & horticulture waste",
     url: SWM_URL,
     topic: "Bulky and construction waste",
     keywords: [
@@ -354,15 +254,19 @@ export const GUIDE: GuidePassage[] = [
       "bulky",
       "demolition",
     ],
-    text: "All resident welfare and market associations shall ensure that construction and demolition waste and horticulture waste are stored separately on their premises and disposed of in accordance with the Construction and Demolition Waste Management Rules.",
-    scope: "national",
+    text: "Construction and demolition waste and horticulture or garden waste should be stored separately at the generator's premises and disposed of as per the local body's instructions, not mixed with household waste.",
+    prep_steps: [
+      "Store construction debris separately on your premises.",
+      "Contact your local body for collection or drop-off instructions.",
+    ],
   },
   {
     id: "pwm-sup",
-    title: "Single-Use Plastic Prohibition",
+    title: "Banned single-use plastics",
     category: "Dry Waste",
+    scope: "national",
     source: PWM,
-    section: "Rule 4(2) & Notification GSR 571(E)",
+    section: "Single-use plastic prohibition (from 1 July 2022)",
     url: PWM_URL,
     topic: "Banned single-use plastics",
     keywords: [
@@ -382,19 +286,19 @@ export const GUIDE: GuidePassage[] = [
       "single-use",
       "plastic",
     ],
-    text: "The manufacture, import, stocking, distribution, sale and use of identified single-use plastic commodities, including polystyrene and expanded polystyrene commodities (earbuds with plastic sticks, plastic sticks for balloons, plastic plates, cups, glasses, cutlery, straws, trays, wrapping films around sweet boxes) have been prohibited. Existing waste items must be deposited with non-biodegradable dry waste for channelization.",
+    text: "Manufacture, sale and use of identified single-use plastic items — including plastic cutlery, plates, cups, straws, stirrers, earbuds with plastic sticks, plastic sticks for balloons, flags and candy, and polystyrene (thermocol) decoration — is prohibited. Existing items should go to the dry stream, not be reused for food.",
     prep_steps: [
-      "Ensure free of food grease or wash lightly",
-      "Channel to dry waste; do not reuse for food contact",
+      "Place used single-use plastic items in the dry waste bin.",
+      "Do not reuse for food contact.",
     ],
-    scope: "national",
   },
   {
     id: "pwm-mlp",
-    title: "Multilayered Packaging & Extended Producer Responsibility",
+    title: "Multilayer packaging (EPR)",
     category: "Dry Waste",
+    scope: "national",
     source: PWM,
-    section: "Rule 9 & Schedule II (EPR Guidelines)",
+    section: "Multilayered packaging & EPR",
     url: PWM_URL,
     topic: "Multilayer packaging and producer responsibility",
     keywords: [
@@ -405,42 +309,37 @@ export const GUIDE: GuidePassage[] = [
       "multilayer",
       "laminated",
       "tetra",
-      "pak",
       "carton",
       "packaging",
       "film",
-      "foil",
       "bag",
-      "greasy",
-      "pizza",
     ],
-    text: "Multi-layered plastic packaging (e.g. chip wrappers, flexible laminate sachets, drink cartons) is subject to Extended Producer Responsibility (EPR). Generators must keep multilayer packaging clean and dry and hand it over to designated dry-waste collectors or brand-authorized takeback drop points.",
+    text: "Multilayered packaging such as chip packets, sachets and laminated pouches falls under Extended Producer Responsibility; brand owners must arrange collection. Households should keep these clean and dry and hand them over with dry waste or to producer take-back channels where available.",
     prep_steps: [
-      "Empty completely and shake out dry crumbs or solids",
-      "Separate detachable components (e.g. plastic lids or straws) where applicable",
-      "Keep dry and clean",
+      "Keep wrapper clean and dry.",
+      "Hand over with dry waste or to a producer take-back channel.",
     ],
-    scope: "national",
   },
   {
     id: "pwm-carry-bag",
-    title: "Plastic Carry Bags Regulation",
+    title: "Plastic carry bags",
     category: "Dry Waste",
+    scope: "national",
     source: PWM,
-    section: "Rule 4(1)(c)",
+    section: "Carry bags — thickness requirement",
     url: PWM_URL,
     topic: "Plastic carry bags",
     keywords: ["carry bag", "polythene", "bag", "shopping bag"],
-    text: "Plastic carry bags made of virgin or recycled plastic shall not be less than one hundred and twenty (120) microns in thickness. Used carry bags should be kept clean and segregated with dry recyclables.",
-    prep_steps: ["Ensure bag is empty and free from wet garbage"],
-    scope: "national",
+    text: "Plastic carry bags below the prescribed thickness (120 microns from 31 December 2022) are not permitted. Used carry bags should be kept clean and sent with dry waste for recycling.",
+    prep_steps: ["Keep the bag clean.", "Send with dry waste for recycling."],
   },
   {
     id: "ew-consumer",
-    title: "Consumer Electronic Waste Takeback",
+    title: "Electronic and electrical waste",
     category: "E-Waste",
+    scope: "national",
     source: EW,
-    section: "Rule 6: Responsibilities of Consumers or Bulk Consumers",
+    section: "Rule 16 — Responsibilities of consumers",
     url: EW_URL,
     topic: "Electronic waste",
     keywords: [
@@ -461,43 +360,59 @@ export const GUIDE: GuidePassage[] = [
       "remote",
       "router",
     ],
-    text: "Consumers or bulk consumers of electrical and electronic equipment shall ensure that e-waste generated by them is channelised through registered collection centres, dealer take-back, or producer takeback systems, and not mixed with regular household municipal solid waste.",
+    text: "Electrical and electronic equipment at end of life must be channelled to registered producers' take-back or collection systems, or to registered dismantlers and recyclers. It should not be placed in regular household waste.",
     prep_steps: [
-      "Do not dismantle or crack electronic components",
-      "Separate external charging cables or batteries if detachable",
-      "Deposit with authorised e-waste collection centre or brand return point",
+      "Locate your brand's authorised take-back or collection point.",
+      "Do not place in regular household waste.",
+      "Remove personal data from phones/laptops before handing over.",
     ],
-    scope: "national",
   },
   {
     id: "bw-consumer",
-    title: "End-of-Life Battery Waste",
+    title: "Waste batteries",
     category: "Domestic Hazardous",
+    scope: "national",
     source: BW,
-    section: "Rule 4: Responsibilities of Consumers",
+    section: "Rule 5 — Responsibilities of consumers",
     url: BW_URL,
     topic: "Batteries",
-    keywords: [
-      "battery",
-      "batteries",
-      "cell",
-      "aa",
-      "aaa",
-      "lithium",
-      "power bank",
-      "button cell",
-      "used battery",
-    ],
-    text: "Consumers shall ensure that waste batteries of any chemistry (lead-acid, lithium-ion, nickel-cadmium, alkaline) are discarded separately from other waste streams and handed over to registered entities or collection points established by producers under Extended Producer Responsibility.",
+    keywords: ["battery", "batteries", "cell", "aa", "aaa", "lithium", "power bank", "button cell"],
+    text: "Waste batteries of all chemistries are covered by Extended Producer Responsibility. Consumers should return them through producer or authorised collection channels rather than discarding them with household waste.",
     prep_steps: [
-      "Tape contact terminals with non-conductive electrical tape if terminals are exposed",
-      "Never puncture, submerge in water, or incinerate",
-      "Deposit at dedicated battery collection bin or drop box",
+      "Return to a producer authorised collection point or retailer take-back.",
+      "Do not place in regular household waste.",
+      "Do not puncture or dismantle batteries.",
     ],
-    scope: "national",
   },
 ];
 
+// ─── LOCAL PASSAGES ───────────────────────────────────────────────────────────
+// Add your campus / locality passages here with scope: "local".
+// Local passages are prioritised over national passages when both match.
+// Use verbatim text from your supplied guide.
+// Leave the placeholder comment if you haven't filled in the text yet.
+
+const LOCAL: GuidePassage[] = [
+  // TODO: paste verbatim from supplied guide — example template:
+  // {
+  //   id: "local-dry",
+  //   title: "Dry waste collection — <locality>",
+  //   category: "Dry Waste",
+  //   scope: "local",
+  //   source: "<Your campus/locality guide title, year>",
+  //   section: "<Section name or page>",
+  //   url: "<URL or 'Internal document'>",
+  //   topic: "Dry waste — local rule",
+  //   keywords: ["paper", "plastic", "glass", "metal", "bottle", "jar", "cardboard"],
+  //   text: "<Verbatim text from the supplied guide>",
+  //   prep_steps: ["<Step from the guide>", "<Step from the guide>"],
+  // },
+];
+
+// ─── Combined guide (local passages first so they score higher in retrieval) ──
+export const GUIDE: GuidePassage[] = [...LOCAL, ...NATIONAL];
+
+// ─── Stop-words for query building ───────────────────────────────────────────
 const STOP = new Set([
   "the",
   "a",
@@ -530,52 +445,39 @@ export function buildQuery(parts: (string | undefined | null)[]): string[] {
   );
 }
 
-export type ScoredPassage = {
-  p: GuidePassage;
-  score: number;
-};
-
-export const MIN_RETRIEVAL_SCORE = 2;
-
-export function retrieveScored(terms: string[]): ScoredPassage[] {
-  return GUIDE.map((p) => {
-    const hay = (
-      p.keywords.join(" ") +
-      " " +
-      p.text +
-      " " +
-      (p.topic ?? "") +
-      " " +
-      p.title +
-      " " +
-      p.category
-    ).toLowerCase();
+/** Lightweight keyword retrieval with provenance.
+ *  Local-scope passages receive a +2 priority bonus.
+ *  Returns an empty array (score 0 for all) when nothing matches —
+ *  the caller checks against MIN_RETRIEVAL_SCORE to decide whether to
+ *  skip the LLM call and return "not_covered".
+ */
+export function retrieve(
+  terms: string[],
+  limit = 5,
+): { passages: GuidePassage[]; topScore: number } {
+  const scored = GUIDE.map((p) => {
+    const hay = (p.keywords.join(" ") + " " + p.text + " " + p.topic).toLowerCase();
     let score = 0;
     for (const t of terms) {
-      if (p.keywords.some((k) => k === t || k.startsWith(t) || t.startsWith(k))) {
-        score += 3;
-      } else if (hay.includes(t)) {
-        score += 1;
-      }
+      if (p.keywords.some((k) => k === t || k.startsWith(t) || t.startsWith(k))) score += 3;
+      else if (hay.includes(t)) score += 1;
     }
-    // Local scope passages take priority when both match
-    if (score > 0 && p.scope === "local") {
-      score += 10;
-    }
+    // Local passages get a priority boost
+    if (p.scope === "local" && score > 0) score += 2;
     return { p, score };
   })
     .filter((s) => s.score > 0)
     .sort((a, b) => b.score - a.score);
+
+  const topScore = scored[0]?.score ?? 0;
+  const top = scored.slice(0, limit).map((s) => s.p);
+  const seg = GUIDE.find((p) => p.id === "swm-segregation")!;
+  if (top.length && !top.includes(seg)) top.push(seg);
+
+  return { passages: top, topScore };
 }
 
-/**
- * Keyword retrieval with scope-prioritization.
- * When local passages match the search terms, they receive priority over national ones.
- */
-export function retrieve(terms: string[], limit = 5): GuidePassage[] {
-  const scored = retrieveScored(terms);
-  const top = scored.slice(0, limit).map((s) => s.p);
-  const seg = GUIDE.find((p) => p.id === "swm-segregation");
-  if (seg && top.length && !top.includes(seg)) top.push(seg);
-  return top;
+/** Convenience: get all passage ids that belong to a given category. */
+export function passagesByCategory(category: WasteCategory): GuidePassage[] {
+  return GUIDE.filter((p) => p.category === category);
 }

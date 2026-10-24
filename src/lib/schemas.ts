@@ -29,7 +29,7 @@ export const analysisSchema = z.object({
 export type Analysis = z.infer<typeof analysisSchema>;
 
 export const disposalAiSchema = z.object({
-  status: z.enum(["verified", "conditional", "insufficient", "not_covered"]),
+  status: z.enum(["verified", "conditional", "insufficient"]),
   category: z.string(),
   explanation: z.string(),
   preparation: z.array(z.string()),
@@ -42,7 +42,9 @@ export const disposalAiSchema = z.object({
 });
 export type DisposalAi = z.infer<typeof disposalAiSchema>;
 
-export type Disposal = DisposalAi & {
+export type Disposal = Omit<DisposalAi, "status"> & {
+  /** Trust-gate can set "not_covered" which the AI schema never produces. */
+  status: DisposalAi["status"] | "not_covered";
   evidence: {
     id: string;
     source: string;

@@ -1,96 +1,117 @@
-import { GUIDE, type GuidePassage } from "./guide";
 import type { DisposalAi } from "./schemas";
+import { GUIDE, MIN_RETRIEVAL_SCORE, type GuidePassage, type WasteCategory } from "./guide";
 
 export type ValidationInput = {
   ai: DisposalAi;
   retrievedIds: string[];
   unansweredQuestions: number;
-  retrievedPassages?: GuidePassage[];
+  topScore: number;
+};
+
+export type DisposalStatus = "verified" | "conditional" | "insufficient" | "not_covered";
+
+export type ValidatedDisposal = Omit<DisposalAi, "status"> & {
+  status: DisposalStatus;
+  citations: { passage_id: string; relevance: string }[];
+  downgraded_reason: string | null;
 };
 
 /**
- * Enforces strict trust rules on an AI disposal recommendation:
- * - Citations must reference passages actually retrieved from the guide
- * - The model's chosen category must match the category of at least one cited passage
- * - Only supported preparation steps from cited passages are retained
- * - "verified" requires at least one valid citation and zero open clarification questions
- * - Empty retrieval => insufficient evidence
+ * NOT_COVERED shortcut — returned directly by computeDisposal when retrieval
+ * scores below MIN_RETRIEVAL_SCORE, avoiding an unnecessary LLM call.
+ */
+export function notCoveredResult(): ValidatedDisposal {
+  return {
+    status: "not_covered",
+    category: "Unknown",
+    explanation:
+      "This item is not covered by the configured waste-management guide. Contact your local authority or municipal helpline for guidance.",
+    preparation: [],
+    conditions: [],
+    exceptions: [],
+    limitations: [
+      "No matching passage found in the guide.",
+      "Contact your local municipal authority for item-specific disposal instructions.",
+    ],
+    citations: [],
+    missing_information: [],
+    general_advice: "",
+    downgraded_reason: "No guide passage matched this item above the minimum relevance threshold.",
+  };
+}
+
+/**
+ * Looks up a passage by id from the guide corpus.
+ * Returns undefined if the id is not found — callers must guard against this.
+ */
+export function lookupPassage(id: string): GuidePassage | undefined {
+  return GUIDE.find((p) => p.id === id);
+}
+
+/**
+ * Enforces trust rules on an AI disposal recommendation:
+ *
+ * 1. Strip citations that reference IDs not actually retrieved.
+ * 2. Downgrade to "insufficient" if no valid citations remain.
+ * 3. Check that the model's chosen category matches the category of at least
+ *    one cited passage. If not, downgrade to "insufficient" with reason
+ *    "Category not supported by cited passage".
+ * 4. Downgrade "verified" → "conditional" when clarifying questions are open.
  */
 export function validateDisposal({
   ai,
   retrievedIds,
   unansweredQuestions,
-  retrievedPassages,
-}: ValidationInput) {
-  // 1. Keep only citations that were actually retrieved
-  const citations = ai.citations.filter((c) => retrievedIds.includes(c.passage_id));
-
-  // Look up cited passages from retrieved set or the full statutory guide
-  const passageMap = new Map<string, GuidePassage>();
-  for (const p of retrievedPassages ?? []) passageMap.set(p.id, p);
-  for (const p of GUIDE) {
-    if (!passageMap.has(p.id)) passageMap.set(p.id, p);
+  topScore,
+}: ValidationInput): ValidatedDisposal {
+  // Guard: if retrieval was below threshold this should not be called — but
+  // protect defensively in case the caller forgets.
+  if (topScore < MIN_RETRIEVAL_SCORE) {
+    return notCoveredResult();
   }
 
-  const citedPassages = citations
-    .map((c) => passageMap.get(c.passage_id))
-    .filter(Boolean) as GuidePassage[];
+  // 1. Strip hallucinated citation IDs
+  const citations = ai.citations.filter((c) => retrievedIds.includes(c.passage_id));
 
-  let status = ai.status;
+  let status: DisposalStatus = ai.status;
   let reason: string | null = null;
 
+  // 2. No retrieved passages at all
   if (retrievedIds.length === 0) {
     status = "insufficient";
     reason = "No guide passage matched this object.";
-  } else if (status !== "insufficient" && citations.length === 0) {
+  }
+  // 3. AI cited something but all IDs were hallucinated
+  else if (status !== "insufficient" && citations.length === 0) {
     status = "insufficient";
     reason = "The recommendation did not cite any guide passage.";
-  } else if (citedPassages.length > 0) {
-    // 2. Check if the model's chosen category equals the category of at least one cited passage
-    const normAiCategory = ai.category.toLowerCase().replace(/ waste$/i, "").trim();
-    const categoryMatches = citedPassages.some((p) => {
-      const normPassageCategory = p.category.toLowerCase().replace(/ waste$/i, "").trim();
-      return (
-        normPassageCategory === normAiCategory ||
-        p.category.toLowerCase().trim() === ai.category.toLowerCase().trim()
-      );
-    });
+  }
+  // 4. Category-match check: the model's chosen category must appear in at
+  //    least one cited passage's category field.
+  else if (status !== "insufficient" && citations.length > 0) {
+    const citedCategories = citations
+      .map((c) => lookupPassage(c.passage_id)?.category)
+      .filter((cat): cat is WasteCategory => Boolean(cat));
 
-    if (!categoryMatches) {
+    const normalised = ai.category.toLowerCase().trim();
+    const categoryMatches = citedCategories.some(
+      (cat) =>
+        cat.toLowerCase() === normalised ||
+        normalised.includes(cat.toLowerCase()) ||
+        cat.toLowerCase().includes(normalised),
+    );
+
+    if (!categoryMatches && citedCategories.length > 0) {
       status = "insufficient";
-      reason = "Category not supported by cited passage";
-    } else if (status === "verified" && unansweredQuestions > 0) {
-      status = "conditional";
-      reason = "Open clarification questions could change this recommendation.";
+      reason = `Category not supported by cited passage. Guide says: ${[...new Set(citedCategories)].join(", ")}.`;
     }
   }
 
-  // 3. Filter preparation steps: only show steps supported by cited passages
-  const citedPrepSteps = citedPassages.flatMap((p) => p.prep_steps ?? []);
-  const validCitedPrep = citedPrepSteps.filter(
-    (ps) => !ps.startsWith("// TODO"),
-  );
-
-  let verifiedPreparation: string[] = [];
-  if (ai.preparation && ai.preparation.length > 0) {
-    verifiedPreparation = ai.preparation.filter((step) => {
-      const norm = step.toLowerCase().trim();
-      return validCitedPrep.some((ps) => {
-        const psNorm = ps.toLowerCase().trim();
-        return psNorm.includes(norm) || norm.includes(psNorm);
-      });
-    });
+  // 5. Open questions → can't call it fully verified
+  if (status === "verified" && unansweredQuestions > 0) {
+    status = "conditional";
+    reason = "Open clarification questions could change this recommendation.";
   }
 
-  // If AI prep steps didn't match directly, fall back to the cited passage's verified prep steps
-  const preparation =
-    verifiedPreparation.length > 0 ? verifiedPreparation : validCitedPrep;
-
-  return {
-    ...ai,
-    status,
-    citations,
-    preparation,
-    downgraded_reason: reason,
-  };
+  return { ...ai, status, citations, downgraded_reason: reason };
 }

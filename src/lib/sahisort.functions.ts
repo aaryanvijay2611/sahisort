@@ -140,10 +140,8 @@ export const computeDisposal = createServerFn({ method: "POST" })
   .middleware([requireFirebaseAuth])
   .validator((d: unknown) => z.object({ id: z.string().min(1) }).parse(d))
   .handler(async ({ data, context }) => {
-    const { buildQuery, retrieveScored, MIN_RETRIEVAL_SCORE, GUIDE } = await import(
-      "./guide"
-    );
-    const { validateDisposal } = await import("./disposal-rules");
+    const { buildQuery, retrieve, MIN_RETRIEVAL_SCORE } = await import("./guide");
+    const { validateDisposal, notCoveredResult } = await import("./disposal-rules");
     const { discovery: disc } = await dbService.getDiscovery(data.id, context.userId);
 
     const analysis = disc.analysis as unknown as Analysis;
@@ -153,45 +151,20 @@ export const computeDisposal = createServerFn({ method: "POST" })
       ...analysis.materials.map((m) => `${m.component} ${m.material}`),
       ...Object.values(answers),
     ]);
+    const { passages, topScore } = retrieve(query);
 
-    const scored = retrieveScored(query);
-    const qualifying = scored.filter((s) => s.score >= MIN_RETRIEVAL_SCORE);
-
-    // If retrieval returns no passage above MIN_RETRIEVAL_SCORE, skip the LLM call entirely
-    if (qualifying.length === 0) {
+    // Short-circuit: skip LLM entirely when nothing in the guide matches
+    if (topScore < MIN_RETRIEVAL_SCORE) {
+      const nc = notCoveredResult();
       const disposal: Disposal = {
-        status: "not_covered",
-        category: "Not covered by this guide",
-        explanation:
-          "Not covered by this guide. No statutory rule or campus directive in this guide covers this item. Please contact your local municipal ward office or campus facilities management for specialized disposal instructions.",
-        preparation: [],
-        conditions: [],
-        exceptions: [],
-        limitations: ["Item not covered by current local or national guide rules"],
-        citations: [],
-        missing_information: [
-          "Item or material is outside the scope of current waste guide",
-        ],
-        general_advice:
-          "Contact your local municipal body or campus waste management authority.",
+        ...nc,
         evidence: [],
         query,
-        downgraded_reason: "Not covered by this guide",
         generated_at: new Date().toISOString(),
       };
-
-      await dbService.updateDisposal({
-        id: data.id,
-        userId: context.userId,
-        disposal,
-      });
-
+      await dbService.updateDisposal({ id: data.id, userId: context.userId, disposal });
       return { ok: true };
     }
-
-    const passages = qualifying.slice(0, 5).map((s) => s.p);
-    const seg = GUIDE.find((p) => p.id === "swm-segregation");
-    if (seg && !passages.some((p) => p.id === seg.id)) passages.push(seg);
 
     const unanswered = analysis.questions.filter((q) => !(q.id in answers)).length;
     const run = await aiDeps();
@@ -209,21 +182,36 @@ export const computeDisposal = createServerFn({ method: "POST" })
       ai,
       retrievedIds: passages.map((p) => p.id),
       unansweredQuestions: unanswered,
-      retrievedPassages: passages,
+      topScore,
     });
+
+    // Only keep prep steps that are grounded in cited passages' prep_steps
+    const citedPassages = v.citations
+      .map((c) => passages.find((p) => p.id === c.passage_id))
+      .filter(Boolean);
+    const allPrepSteps = citedPassages.flatMap((p) => p!.prep_steps.map((s) => s.toLowerCase()));
+    const groundedPrep = v.preparation.filter((step) =>
+      allPrepSteps.some(
+        (ps) =>
+          ps.includes(step.toLowerCase().slice(0, 20)) ||
+          step.toLowerCase().includes(ps.slice(0, 20)),
+      ),
+    );
+    // If no AI steps matched, fall through to showing cited passages' own prep_steps
+    const finalPrep = groundedPrep.length > 0 ? groundedPrep : citedPassages.flatMap((p) => p!.prep_steps);
+
     const disposal: Disposal = {
       ...v,
+      preparation: finalPrep,
       evidence: v.citations.map((c) => {
-        const p =
-          passages.find((x) => x.id === c.passage_id) ||
-          GUIDE.find((x) => x.id === c.passage_id)!;
+        const p = passages.find((x) => x.id === c.passage_id)!;
         return {
           id: p.id,
           source: p.source,
           section: p.section,
           url: p.url,
-          topic: p.topic ?? p.title,
-          text: p.text, // Verbatim statutory text from guide.ts
+          topic: p.topic,
+          text: p.text, // verbatim from guide corpus, never AI-written
           relevance: c.relevance,
         };
       }),

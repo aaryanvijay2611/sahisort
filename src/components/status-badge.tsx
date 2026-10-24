@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { ShieldCheck, ShieldQuestion, ShieldAlert } from "lucide-react";
+import { ShieldCheck, ShieldQuestion, ShieldAlert, ShieldOff } from "lucide-react";
 
 export const STATUS = {
   verified: {
@@ -22,9 +22,9 @@ export const STATUS = {
   },
   not_covered: {
     label: "Not covered",
-    icon: ShieldAlert,
-    cls: "bg-destructive/15 text-destructive border-destructive/40",
-    desc: "Not covered by this guide. Please contact your local authority.",
+    icon: ShieldOff,
+    cls: "bg-muted text-muted-foreground border-border",
+    desc: "This item is not covered by the configured waste-management guide. Contact your local authority for guidance.",
   },
 } as const;
 
