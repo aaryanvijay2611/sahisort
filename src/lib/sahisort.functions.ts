@@ -1,6 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import type { ModelMessage } from "ai";
 import { requireFirebaseAuth } from "@/integrations/firebase/auth-middleware";
 import { dbService } from "@/integrations/firebase/db.server";
 import {
@@ -9,47 +8,21 @@ import {
   projectsSchema,
   recreatePrefsSchema,
   type Analysis,
-  type Disposal,
+  type DisposalAi,
 } from "./schemas";
+import {
+  ANALYSE_SYSTEM,
+  DISPOSAL_SYSTEM,
+  RECREATE_SYSTEM,
+  buildAnalyseMessages,
+  buildDisposalMessages,
+} from "./prompts";
 
 type Answers = Record<string, string>;
-
-const ANALYSE_SYSTEM = `You are SahiSort's object-intelligence engine. Identify an everyday object from a photo and/or description.
-Rules:
-- "observations" are only things visibly present or explicitly stated. Never state polymer types, alloys, or coatings as observed unless a label is visible.
-- Materials: basis "observed" only when visible/label-confirmed; "inferred" for appearance-based guesses; "user_confirmed" when the user's answers or correction state it.
-- Ask questions ONLY when the answer would materially change disposal or reuse (e.g. resin code, contamination, detachable parts, damage, batteries inside). Max 3. Give 2-4 short options each. Return [] when information is sufficient. Never re-ask answered questions.
-- If you cannot identify the object, set identifiable=false and ask for what is missing.
-- reuse_safe=false for items that are unsafe to repurpose (batteries, medicines, chemicals, broken glass with sharp edges, mercury bulbs, food-contact reuse of degraded plastics). Explain briefly.
-- Use plain language. Do not give numeric confidence scores.`;
 
 async function aiDeps() {
   const { runStructured } = await import("./ai.server");
   return runStructured;
-}
-
-function buildAnalyseMessages(input: {
-  description?: string | null;
-  image?: string | null;
-  answers: Answers;
-  correction?: string | null;
-}): ModelMessage[] {
-  const text = [
-    input.description ? `User description: ${input.description}` : "No description given.",
-    input.correction ? `USER CORRECTION (authoritative): ${input.correction}` : "",
-    Object.keys(input.answers).length
-      ? `Answers to earlier questions (authoritative): ${JSON.stringify(input.answers)}`
-      : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
-  const content: Exclude<ModelMessage["content"], string> = [{ type: "text", text }] as never;
-  if (input.image)
-    (content as unknown[]).push({
-      type: "image",
-      image: new URL(input.image),
-    });
-  return [{ role: "user", content } as ModelMessage];
 }
 
 export const analyseObject = createServerFn({ method: "POST" })
@@ -127,97 +100,38 @@ export const refineDiscovery = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-const DISPOSAL_SYSTEM = `You are SahiSort's evidence-assisted disposal reasoner.
-You receive an object analysis and a set of GUIDE PASSAGES (with ids). Base the recommendation ONLY on these passages.
-- status "verified": passages clearly cover this material and conditions, and no open question changes the outcome.
-- status "conditional": the outcome depends on an unresolved question or a condition (e.g. clean vs contaminated).
-- status "insufficient": passages do not adequately cover the item.
-- Cite passage ids only in the citations array — never write ids or brackets in prose fields. Never invent passages, rules, facilities, schedules or collection services.
-- The guide is national-level; do not claim municipal specifics. Add that to limitations when relevant.
-- general_advice: optional general (non-guide) tips, clearly general. Keep everything concise and plain.`;
-
 export const computeDisposal = createServerFn({ method: "POST" })
   .middleware([requireFirebaseAuth])
   .validator((d: unknown) => z.object({ id: z.string().min(1) }).parse(d))
   .handler(async ({ data, context }) => {
-    const { buildQuery, retrieve, MIN_RETRIEVAL_SCORE } = await import("./guide");
-    const { validateDisposal, notCoveredResult } = await import("./disposal-rules");
+    const { retrieve, MIN_RELEVANCE_SCORE } = await import("./guide");
+    const { buildDisposal, buildQueryForAnalysis, unansweredQuestions } = await import(
+      "./disposal-pipeline"
+    );
     const { discovery: disc } = await dbService.getDiscovery(data.id, context.userId);
 
     const analysis = disc.analysis as unknown as Analysis;
     const answers = disc.answers as Answers;
-    const query = buildQuery([
-      analysis.object_name,
-      ...analysis.materials.map((m) => `${m.component} ${m.material}`),
-      ...Object.values(answers),
-    ]);
-    const { passages, topScore } = retrieve(query);
+    const terms = buildQueryForAnalysis(analysis, answers);
+    const { passages, topScore } = retrieve(terms);
 
-    // Short-circuit: skip LLM entirely when nothing in the guide matches
-    if (topScore < MIN_RETRIEVAL_SCORE) {
-      const nc = notCoveredResult();
-      const disposal: Disposal = {
-        ...nc,
-        evidence: [],
-        query,
-        generated_at: new Date().toISOString(),
-      };
-      await dbService.updateDisposal({ id: data.id, userId: context.userId, disposal });
-      return { ok: true };
+    // Below the relevance floor: skip the model entirely and say so.
+    let ai: DisposalAi | null = null;
+    if (topScore >= MIN_RELEVANCE_SCORE) {
+      const run = await aiDeps();
+      ai = await run(
+        disposalAiSchema,
+        DISPOSAL_SYSTEM,
+        buildDisposalMessages(
+          analysis,
+          answers,
+          unansweredQuestions(analysis, answers),
+          passages,
+        ),
+      );
     }
 
-    const unanswered = analysis.questions.filter((q) => !(q.id in answers)).length;
-    const run = await aiDeps();
-    const ai = await run(disposalAiSchema, DISPOSAL_SYSTEM, [
-      {
-        role: "user",
-        content: `OBJECT ANALYSIS:\n${JSON.stringify({ ...analysis, answers })}\n\nOPEN QUESTIONS: ${unanswered}\n\nGUIDE PASSAGES:\n${
-          passages.length
-            ? passages.map((p) => `[${p.id}] (${p.source} — ${p.section}) ${p.text}`).join("\n")
-            : "(none matched)"
-        }`,
-      },
-    ]);
-    const v = validateDisposal({
-      ai,
-      retrievedIds: passages.map((p) => p.id),
-      unansweredQuestions: unanswered,
-      topScore,
-    });
-
-    // Only keep prep steps that are grounded in cited passages' prep_steps
-    const citedPassages = v.citations
-      .map((c) => passages.find((p) => p.id === c.passage_id))
-      .filter(Boolean);
-    const allPrepSteps = citedPassages.flatMap((p) => p!.prep_steps.map((s) => s.toLowerCase()));
-    const groundedPrep = v.preparation.filter((step) =>
-      allPrepSteps.some(
-        (ps) =>
-          ps.includes(step.toLowerCase().slice(0, 20)) ||
-          step.toLowerCase().includes(ps.slice(0, 20)),
-      ),
-    );
-    // If no AI steps matched, fall through to showing cited passages' own prep_steps
-    const finalPrep = groundedPrep.length > 0 ? groundedPrep : citedPassages.flatMap((p) => p!.prep_steps);
-
-    const disposal: Disposal = {
-      ...v,
-      preparation: finalPrep,
-      evidence: v.citations.map((c) => {
-        const p = passages.find((x) => x.id === c.passage_id)!;
-        return {
-          id: p.id,
-          source: p.source,
-          section: p.section,
-          url: p.url,
-          topic: p.topic,
-          text: p.text, // verbatim from guide corpus, never AI-written
-          relevance: c.relevance,
-        };
-      }),
-      query,
-      generated_at: new Date().toISOString(),
-    };
+    const disposal = buildDisposal({ analysis, answers, ai, passages, topScore });
 
     await dbService.updateDisposal({
       id: data.id,
@@ -227,12 +141,6 @@ export const computeDisposal = createServerFn({ method: "POST" })
 
     return { ok: true };
   });
-
-const RECREATE_SYSTEM = `You are SahiSort's RE:CREATE studio. Generate 3 practical, genuinely useful reuse projects for the given object, adapted to the user's constraints.
-- Respect available time, difficulty, tools, intended use and whether they will buy materials (if not, materials should mostly be common household items; mark have_it honestly).
-- Steps must be concrete and ordered (4-8 steps). Include real safety notes (sharp edges, adhesives, heat, food contact).
-- Never suggest reusing unsafe items (batteries, medicines, chemicals, mercury bulbs). If the object is unsafe to repurpose, return projects: [].
-- Do not claim environmental impact numbers.`;
 
 export const generateProjects = createServerFn({ method: "POST" })
   .middleware([requireFirebaseAuth])

@@ -16,6 +16,7 @@ export function AuthCard({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const { demoMode, startDemo } = useAuth();
 
   async function handleGoogleSignIn() {
     setBusy(true);
@@ -73,6 +74,21 @@ export function AuthCard({
       <p className="mt-2 text-sm text-muted-foreground">
         Your discoveries, projects and journey are stored privately to your account.
       </p>
+
+      {demoMode && (
+        <div className="mt-6 rounded-2xl border border-dashed bg-sage/60 p-4">
+          <Button
+            variant="secondary"
+            className="h-11 w-full rounded-full text-sm font-medium"
+            onClick={startDemo}
+          >
+            Try without signing in
+          </Button>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Opens a shared demo session on this device only. Nothing is saved to an account.
+          </p>
+        </div>
+      )}
 
       <div className="mt-6 grid gap-2">
         <Button

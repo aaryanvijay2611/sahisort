@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
 import { signOutUser } from "@/integrations/firebase/client";
 import { Button } from "@/components/ui/button";
+import { GUIDE_META, guideLabel, isGuidePending } from "@/lib/guide";
 
 const NAV = [
   { to: "/discover", label: "Discover" },
@@ -21,7 +22,7 @@ export function Logo() {
 }
 
 export function SiteHeader() {
-  const { user } = useAuth();
+  const { user, demo, exitDemo } = useAuth();
   return (
     <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6">
@@ -39,9 +40,18 @@ export function SiteHeader() {
           ))}
         </nav>
         <div className="flex items-center gap-2">
+          {demo && (
+            <span className="hidden rounded-full bg-secondary px-2.5 py-1 text-[11px] font-semibold text-muted-foreground sm:inline">
+              Try-out mode
+            </span>
+          )}
           {user ? (
             <Button variant="ghost" size="sm" onClick={() => signOutUser()}>
               Sign out
+            </Button>
+          ) : demo ? (
+            <Button variant="ghost" size="sm" onClick={exitDemo}>
+              Exit demo
             </Button>
           ) : null}
           <Button asChild size="sm" className="shrink-0 rounded-full">
@@ -77,10 +87,16 @@ export function SiteFooter() {
           <p className="mt-3 max-w-sm text-sm text-muted-foreground">
             Sort it right. Give it a second life.
           </p>
-          <p className="mt-6 max-w-md text-xs text-muted-foreground">
-            SahiSort's AI can be wrong. Disposal guidance is based on summaries of India's national
-            waste rules and does not cover your municipality's collection schedules or facilities.
-            Always follow local instructions.
+          <p className="mt-6 max-w-md text-xs font-semibold text-foreground">{guideLabel()}</p>
+          {isGuidePending() && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Local guide not loaded yet — national rules are shown instead.
+            </p>
+          )}
+          <p className="mt-3 max-w-md text-xs text-muted-foreground">
+            SahiSort's AI can be wrong. Disposal guidance comes from {GUIDE_META.authority} rules
+            once supplied, and from India's national waste rules until then. It does not cover
+            collection schedules or facilities. Always follow local instructions.
           </p>
         </div>
         <div className="grid content-start gap-2 text-sm">

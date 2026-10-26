@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { getAdminDb } from "./admin";
+import type { Analysis, Disposal, Project } from "@/lib/schemas";
+import { DEMO_MODE } from "@/lib/demo";
 
 export interface JourneyLog {
   id: string;
@@ -29,9 +31,9 @@ export interface DiscoveryDoc {
   object_name: string;
   description: string | null;
   image_data: string | null;
-  analysis: unknown;
+  analysis: Analysis;
   answers: Record<string, string>;
-  disposal: unknown | null;
+  disposal: Disposal | null;
   disposal_stale: boolean;
   disposal_confirmed_at: string | null;
   saved: boolean;
@@ -44,7 +46,7 @@ export interface ProjectDoc {
   user_id: string;
   discovery_id: string;
   title: string;
-  data: unknown;
+  data: Project;
   completed_steps?: number[];
   completed_at: string | null;
   saved: boolean;
@@ -84,7 +86,26 @@ function writeLocalStore(store: LocalStore) {
   }
 }
 
+function patchLocalDiscovery(id: string, patch: Partial<DiscoveryDoc>): void {
+  const store = readLocalStore();
+  const doc = store.discoveries[id];
+  if (!doc) return;
+  Object.assign(doc, patch);
+  writeLocalStore(store);
+}
+
+function patchLocalProject(id: string, patch: Partial<ProjectDoc>): void {
+  const store = readLocalStore();
+  const doc = store.projects[id];
+  if (!doc) return;
+  Object.assign(doc, patch);
+  writeLocalStore(store);
+}
+
 function hasCloudFirestore(): boolean {
+  // Demo mode always uses the local JSON store, so a no-login session never
+  // writes to the production database.
+  if (DEMO_MODE) return false;
   return !!(
     (process.env["FIREBASE_CLIENT_EMAIL"] && process.env["FIREBASE_PRIVATE_KEY"]) ||
     process.env["GOOGLE_APPLICATION_CREDENTIALS"] ||
@@ -137,7 +158,7 @@ export const dbService = {
     objectName: string;
     description: string | null;
     imageData: string | null;
-    analysis: unknown;
+    analysis: Analysis;
   }): Promise<string> {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -224,7 +245,7 @@ export const dbService = {
   async refineDiscovery(data: {
     id: string;
     userId: string;
-    analysis: unknown;
+    analysis: Analysis;
     objectName: string;
     answers: Record<string, string>;
     correction: string | null;
@@ -245,18 +266,10 @@ export const dbService = {
         await firestore.collection("discoveries").doc(data.id).update(patch);
       } catch (e) {
         console.warn("[Firestore] refineDiscovery fallback:", e);
-        const store = readLocalStore();
-        if (store.discoveries[data.id]) {
-          Object.assign(store.discoveries[data.id], patch);
-          writeLocalStore(store);
-        }
+        patchLocalDiscovery(data.id, patch);
       }
     } else {
-      const store = readLocalStore();
-      if (store.discoveries[data.id]) {
-        Object.assign(store.discoveries[data.id], patch);
-        writeLocalStore(store);
-      }
+      patchLocalDiscovery(data.id, patch);
     }
 
     if (data.correction) {
@@ -281,7 +294,7 @@ export const dbService = {
     }
   },
 
-  async updateDisposal(data: { id: string; userId: string; disposal: unknown }): Promise<void> {
+  async updateDisposal(data: { id: string; userId: string; disposal: Disposal }): Promise<void> {
     const now = new Date().toISOString();
     const patch = {
       disposal: data.disposal,
@@ -295,18 +308,10 @@ export const dbService = {
         await firestore.collection("discoveries").doc(data.id).update(patch);
       } catch (e) {
         console.warn("[Firestore] updateDisposal fallback:", e);
-        const store = readLocalStore();
-        if (store.discoveries[data.id]) {
-          Object.assign(store.discoveries[data.id], patch);
-          writeLocalStore(store);
-        }
+        patchLocalDiscovery(data.id, patch);
       }
     } else {
-      const store = readLocalStore();
-      if (store.discoveries[data.id]) {
-        Object.assign(store.discoveries[data.id], patch);
-        writeLocalStore(store);
-      }
+      patchLocalDiscovery(data.id, patch);
     }
   },
 
@@ -314,7 +319,7 @@ export const dbService = {
     userId: string;
     discoveryId: string;
     objectName: string;
-    projects: { title: string; data: unknown }[];
+    projects: { title: string; data: Project }[];
     prefs: unknown;
   }): Promise<number> {
     const now = new Date().toISOString();
@@ -395,15 +400,15 @@ export const dbService = {
 
     if (!project) throw new Error("Project not found");
 
+    if (!discovery) return project;
+
     return {
       ...project,
-      discoveries: discovery
-        ? {
-            id: discovery.id,
-            object_name: discovery.object_name,
-            image_data: discovery.image_data,
-          }
-        : undefined,
+      discoveries: {
+        id: discovery.id,
+        object_name: discovery.object_name,
+        image_data: discovery.image_data,
+      },
     };
   },
 
@@ -444,10 +449,10 @@ export const dbService = {
     userId: string;
     table: "discoveries" | "projects";
     id: string;
-    saved?: boolean;
-    confirmDisposal?: boolean;
-    completed?: boolean;
-    completedSteps?: number[];
+    saved?: boolean | undefined;
+    confirmDisposal?: boolean | undefined;
+    completed?: boolean | undefined;
+    completedSteps?: number[] | undefined;
   }): Promise<void> {
     const now = new Date().toISOString();
 
@@ -464,18 +469,10 @@ export const dbService = {
           await firestore.collection("discoveries").doc(data.id).update(patch);
         } catch (e) {
           console.warn("[Firestore] updateFlags discoveries fallback:", e);
-          const store = readLocalStore();
-          if (store.discoveries[data.id]) {
-            Object.assign(store.discoveries[data.id], patch);
-            writeLocalStore(store);
-          }
+          patchLocalDiscovery(data.id, patch);
         }
       } else {
-        const store = readLocalStore();
-        if (store.discoveries[data.id]) {
-          Object.assign(store.discoveries[data.id], patch);
-          writeLocalStore(store);
-        }
+        patchLocalDiscovery(data.id, patch);
       }
 
       if (data.confirmDisposal) {
@@ -505,18 +502,10 @@ export const dbService = {
           await firestore.collection("projects").doc(data.id).update(patch);
         } catch (e) {
           console.warn("[Firestore] updateFlags projects fallback:", e);
-          const store = readLocalStore();
-          if (store.projects[data.id]) {
-            Object.assign(store.projects[data.id], patch);
-            writeLocalStore(store);
-          }
+          patchLocalProject(data.id, patch);
         }
       } else {
-        const store = readLocalStore();
-        if (store.projects[data.id]) {
-          Object.assign(store.projects[data.id], patch);
-          writeLocalStore(store);
-        }
+        patchLocalProject(data.id, patch);
       }
 
       if (data.completed) {

@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { RequireAuth } from "@/components/auth-card";
 import { analyseObject } from "@/lib/sahisort.functions";
 import { ACCEPTED, fileToDataUrl } from "@/lib/image";
+import { DEMO_ITEMS } from "@/data/demo-items";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/discover")({
@@ -32,13 +33,6 @@ export const Route = createFileRoute("/discover")({
     </RequireAuth>
   ),
 });
-
-const EXAMPLES = [
-  "Takeaway coffee cup with a black lid",
-  "Old phone charger with frayed cable",
-  "Empty glass jam jar with metal lid",
-  "Tetra pak juice carton",
-];
 
 function Discover() {
   const [image, setImage] = useState<string | null>(null);
@@ -171,16 +165,26 @@ function Discover() {
             placeholder="e.g. a yoghurt tub with a foil lid, a little dirty"
             className="mt-2 bg-card"
           />
-          <div className="mt-3 flex flex-wrap gap-2">
-            {EXAMPLES.map((x) => (
-              <button
-                key={x}
-                onClick={() => setDesc(x)}
-                className="rounded-full border bg-card px-3 py-1 text-xs hover:border-primary"
-              >
-                {x}
-              </button>
-            ))}
+          <div className="mt-3">
+            <p className="text-xs text-muted-foreground">
+              Or try a common household item ({DEMO_ITEMS.length}):
+            </p>
+            <div className="mt-2 flex max-h-44 flex-wrap gap-2 overflow-y-auto pr-1">
+              {DEMO_ITEMS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  title={item.description}
+                  onClick={() => setDesc(item.description)}
+                  className={cn(
+                    "rounded-full border bg-card px-3 py-1 text-xs hover:border-primary",
+                    desc === item.description && "border-primary bg-primary text-primary-foreground",
+                  )}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="mt-auto pt-8">
             {err && (

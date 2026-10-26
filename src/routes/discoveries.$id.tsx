@@ -89,6 +89,12 @@ function DiscoveryView({ id }: { id: string }) {
         saved={d.saved}
         summary={a.summary}
       />
+      <StatusBanner
+        a={a}
+        answers={d.answers as Record<string, string>}
+        disposal={d.disposal as unknown as Disposal | null}
+        stale={d.disposal_stale}
+      />
       <div className="mt-12 grid gap-10 lg:grid-cols-[1fr_1.15fr]">
         <Understand id={id} a={a} answers={d.answers as Record<string, string>} />
         <div className="grid content-start gap-10">
@@ -97,10 +103,88 @@ function DiscoveryView({ id }: { id: string }) {
             disposal={d.disposal as unknown as Disposal | null}
             stale={d.disposal_stale}
             confirmed={d.disposal_confirmed_at}
+            blocked={!a.identifiable}
           />
           <Recreate id={id} a={a} projects={q.data.projects} />
         </div>
       </div>
+    </div>
+  );
+}
+
+/** The single confidence/status banner for a discovery. */
+function StatusBanner({
+  a,
+  answers,
+  disposal,
+  stale,
+}: {
+  a: Analysis;
+  answers: Record<string, string>;
+  disposal: Disposal | null;
+  stale: boolean;
+}) {
+  // Not identifiable: no disposal is offered until the user adds information.
+  if (!a.identifiable) {
+    return (
+      <div
+        role="alert"
+        className="mt-10 rounded-3xl border-2 border-dashed border-destructive/40 bg-apricot/40 p-6"
+      >
+        <div className="flex items-center gap-2">
+          <Camera className="size-4 text-primary" />
+          <p className="font-semibold">SahiSort can't identify this item yet</p>
+        </div>
+        <p className="mt-2 text-sm">
+          {a.identification_reason ||
+            "The photo doesn't show enough of the item to tell what it is or what it's made of."}
+        </p>
+        <p className="mt-2 text-sm font-medium">
+          {a.next_step ||
+            "Retake the photo in good light (or closer to the label), or add a short description below."}
+        </p>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Disposal guidance stays locked until the item is clearer.
+        </p>
+      </div>
+    );
+  }
+
+  if (!disposal || stale) return null;
+
+  const open = a.questions.filter((q) => !(q.id in answers));
+
+  return (
+    <div className="mt-10 rounded-3xl border bg-card p-6 shadow-soft">
+      <div className="flex flex-wrap items-center gap-3">
+        <StatusBadge status={disposal.status} />
+        <p className="text-sm text-muted-foreground">{STATUS[disposal.status].desc}</p>
+      </div>
+      {disposal.status === "conditional" && open.length > 0 && (
+        <div className="mt-3">
+          <p className="text-xs font-semibold">Open questions that could change this</p>
+          <ul className="mt-1 grid gap-1 pl-5 text-sm text-muted-foreground">
+            {open.map((q) => (
+              <li key={q.id} className="list-disc">
+                {q.question}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {disposal.downgraded_reason && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          Why it isn't stronger: {disposal.downgraded_reason}
+        </p>
+      )}
+      {disposal.scope_note && (
+        <p className="mt-3 rounded-xl bg-apricot/40 px-3 py-2 text-xs">{disposal.scope_note}</p>
+      )}
+      {disposal.status === "not_covered" && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          No AI guess was made for this item — the guide simply doesn't cover it.
+        </p>
+      )}
     </div>
   );
 }
@@ -344,9 +428,16 @@ function Understand({
         </div>
       )}
       {!a.identifiable && (
-        <p className="rounded-2xl bg-apricot/50 p-4 text-sm">
-          SahiSort couldn't identify this reliably. Add a correction or a clearer description above.
-        </p>
+        <div className="rounded-2xl bg-apricot/50 p-4 text-sm">
+          <p className="font-semibold">Why we stopped</p>
+          <p className="mt-1">
+            {a.identification_reason || "The item couldn't be identified reliably."}
+          </p>
+          <p className="mt-2 font-medium">
+            {a.next_step ||
+              "Retake the photo or add a description, then correct the identification above."}
+          </p>
+        </div>
       )}
     </section>
   );
@@ -357,11 +448,14 @@ function Dispose({
   disposal,
   stale,
   confirmed,
+  blocked,
 }: {
   id: string;
   disposal: Disposal | null;
   stale: boolean;
   confirmed: string | null;
+  /** True while the item is unidentifiable: disposal must not be attempted. */
+  blocked: boolean;
 }) {
   const qc = useQueryClient();
   const fn = useServerFn(computeDisposal);
@@ -388,32 +482,76 @@ function Dispose({
               recommendation is outdated.
             </p>
           )}
-          <p className="text-sm text-muted-foreground">
-            SahiSort will search its guide, weigh the evidence, and only call a result verified when
-            the passages support it.
-          </p>
-          <Button className="mt-5 rounded-full" onClick={() => m.mutate()} disabled={m.isPending}>
-            {m.isPending ? (
-              <>
-                <Loader2 className="animate-spin" /> Checking the guide…
-              </>
-            ) : stale ? (
-              "Refresh recommendation"
-            ) : (
-              "Find the right disposal route"
-            )}
-          </Button>
+          {blocked ? (
+            <p className="flex gap-2 rounded-xl bg-apricot/40 p-4 text-sm">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              Add a clearer photo or a description first. SahiSort won't guess where an unidentified
+              item belongs.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                SahiSort will search its guide, weigh the evidence, and only call a result verified
+                when the passages support it.
+              </p>
+              <Button className="mt-5 rounded-full" onClick={() => m.mutate()} disabled={m.isPending}>
+                {m.isPending ? (
+                  <>
+                    <Loader2 className="animate-spin" /> Checking the guide…
+                  </>
+                ) : stale ? (
+                  "Refresh recommendation"
+                ) : (
+                  "Find the right disposal route"
+                )}
+              </Button>
+            </>
+          )}
         </div>
       ) : (
         <div className="mt-5 grid gap-6">
           <div>
-            <p className="font-display text-4xl">{disposal.category}</p>
+            <p className="font-display text-4xl">
+              {disposal.status === "not_covered" ? "Not covered by this guide" : disposal.category}
+            </p>
             <p className="mt-2 text-sm">{disposal.explanation}</p>
             <p className="mt-2 text-xs text-muted-foreground">
               {STATUS[disposal.status].desc}
               {disposal.downgraded_reason ? ` (${disposal.downgraded_reason})` : ""}
             </p>
           </div>
+          {(disposal.components?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-eyebrow text-muted-foreground">Component by component</p>
+              <div className="mt-2 divide-y rounded-2xl border">
+                {disposal.components!.map((c) => (
+                  <div
+                    key={`${c.component}-${c.material}`}
+                    className="flex items-start justify-between gap-3 px-4 py-3 text-sm"
+                  >
+                    <div>
+                      <p className="font-medium">{c.component}</p>
+                      <p className="text-muted-foreground">{c.material}</p>
+                    </div>
+                    <span
+                      className={cn(
+                        "shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
+                        c.supported && c.category
+                          ? "bg-spring/50 text-foreground"
+                          : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {c.supported && c.category ? c.category : "No guide rule for this part"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Each part is matched to the guide on its own, so parts can differ from the overall
+                answer above.
+              </p>
+            </div>
+          )}
           {disposal.preparation.length > 0 && (
             <div>
               <p className="text-eyebrow text-muted-foreground">Prepare it</p>
@@ -447,23 +585,41 @@ function Dispose({
               <div className="mt-3 grid gap-3">
                 {disposal.evidence.map((e) => (
                   <figure key={e.id} className="rounded-2xl border-l-4 border-primary bg-sage p-4">
-                    <blockquote className="font-display text-lg leading-snug">
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold">
+                      <span className="rounded-full border border-primary/30 bg-card px-2 py-0.5">
+                        {e.scope === "local"
+                          ? "Gurugram local rule"
+                          : "National rule (applies in Gurugram)"}
+                      </span>
+                      {e.category && (
+                        <span className="rounded-full bg-card/70 px-2 py-0.5 text-muted-foreground">
+                          {e.category}
+                        </span>
+                      )}
+                    </div>
+                    <blockquote className="mt-2 font-display text-lg leading-snug">
                       "{e.text}"
                     </blockquote>
                     <figcaption className="mt-3 text-xs text-muted-foreground">
-                      <a
-                        href={e.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-semibold text-foreground underline-offset-2 hover:underline"
-                      >
-                        {e.source}
-                      </a>{" "}
-                      · {e.section} · <span className="italic">SahiSort summary</span>
+                      {e.url ? (
+                        <a
+                          href={e.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-semibold text-foreground underline-offset-2 hover:underline"
+                        >
+                          {e.source}
+                        </a>
+                      ) : (
+                        <span className="font-semibold text-foreground">{e.source}</span>
+                      )}{" "}
+                      · {e.section} · <span className="italic">verbatim from the guide</span>
                     </figcaption>
-                    <p className="mt-2 text-xs">
-                      <span className="font-semibold">Why it applies:</span> {e.relevance}
-                    </p>
+                    {e.relevance && (
+                      <p className="mt-2 text-xs">
+                        <span className="font-semibold">Why it applies:</span> {e.relevance}
+                      </p>
+                    )}
                   </figure>
                 ))}
               </div>

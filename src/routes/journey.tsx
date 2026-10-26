@@ -14,9 +14,21 @@ import {
   Trash2,
 } from "lucide-react";
 import { RequireAuth } from "@/components/auth-card";
+import { StatusBadge } from "@/components/status-badge";
 import { listMine, getJourneyLogs } from "@/lib/sahisort.functions";
+import { canonicalCategory } from "@/lib/disposal-rules";
 import type { Analysis, Disposal } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
+
+const CATEGORY_FILTERS = [
+  "All",
+  "Dry Waste",
+  "Wet Waste",
+  "Domestic Hazardous",
+  "E-Waste",
+  "Sanitary",
+  "Unclassified",
+] as const;
 
 export const Route = createFileRoute("/journey")({
   head: () => ({
@@ -45,6 +57,7 @@ function Journey() {
   const fetchMine = useServerFn(listMine);
   const fetchLogs = useServerFn(getJourneyLogs);
   const [filter, setFilter] = useState<"all" | "actions" | "inputs">("all");
+  const [category, setCategory] = useState<(typeof CATEGORY_FILTERS)[number]>("All");
 
   const qMine = useQuery({ queryKey: ["mine"], queryFn: () => fetchMine() });
   const qLogs = useQuery({ queryKey: ["journeyLogs"], queryFn: () => fetchLogs() });
@@ -72,11 +85,32 @@ function Journey() {
   const mats = [...materials.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
   const maxM = Math.max(1, ...mats.map((m) => m[1]));
 
-  const statuses = { verified: 0, conditional: 0, insufficient: 0 };
+  const statuses = { verified: 0, conditional: 0, insufficient: 0, not_covered: 0 };
   for (const d of discoveries) {
     const s = (d.disposal as unknown as Disposal | null)?.status;
-    if (s) statuses[s]++;
+    if (s && s in statuses) statuses[s]++;
   }
+
+  // Past discoveries table + category chart (disposal-based).
+  const history = discoveries.map((d) => {
+    const disposal = d.disposal as unknown as Disposal | null;
+    const cat = disposal ? (canonicalCategory(disposal.category) ?? "Unclassified") : "Unclassified";
+    const answers = (d.answers ?? {}) as Record<string, string>;
+    return {
+      id: d.id,
+      item: d.object_name,
+      category: cat,
+      status: disposal?.status ?? null,
+      created_at: d.created_at,
+      correction: answers["correction"] ?? "",
+    };
+  });
+  const filteredHistory = category === "All" ? history : history.filter((h) => h.category === category);
+  const categoryCounts = CATEGORY_FILTERS.slice(1).map((c) => ({
+    category: c,
+    count: history.filter((h) => h.category === c).length,
+  }));
+  const maxCategory = Math.max(1, ...categoryCounts.map((c) => c.count));
 
   // Filter logs based on selection
   const filteredLogs = logs.filter((l) => {
@@ -121,6 +155,104 @@ function Journey() {
         ))}
       </div>
 
+      <section className="mt-10 rounded-3xl border bg-card p-8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-eyebrow">Past discoveries</p>
+          <div className="flex flex-wrap gap-1 rounded-full bg-muted p-1 text-xs">
+            {CATEGORY_FILTERS.map((c) => (
+              <button
+                key={c}
+                onClick={() => setCategory(c)}
+                aria-pressed={category === c}
+                className={cn(
+                  "rounded-full px-3 py-1 font-medium transition-colors",
+                  category === c && "bg-card text-foreground shadow-soft",
+                )}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {filteredHistory.length === 0 ? (
+          <p className="mt-6 text-sm text-muted-foreground">
+            No discoveries in this category yet.{" "}
+            <Link to="/discover" className="text-primary underline">
+              Start one
+            </Link>
+          </p>
+        ) : (
+          <div className="mt-6 overflow-x-auto">
+            <table className="w-full min-w-[40rem] border-collapse text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs text-muted-foreground">
+                  <th className="py-2 pr-4 font-semibold">Item</th>
+                  <th className="py-2 pr-4 font-semibold">Category</th>
+                  <th className="py-2 pr-4 font-semibold">Status</th>
+                  <th className="py-2 pr-4 font-semibold">Date</th>
+                  <th className="py-2 font-semibold">Your correction</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredHistory.map((h) => (
+                  <tr key={h.id} className="border-b last:border-0">
+                    <td className="py-3 pr-4">
+                      <Link
+                        to="/discoveries/$id"
+                        params={{ id: h.id }}
+                        className="font-medium hover:text-primary hover:underline"
+                      >
+                        {h.item}
+                      </Link>
+                    </td>
+                    <td className="py-3 pr-4 text-muted-foreground">{h.category}</td>
+                    <td className="py-3 pr-4">
+                      {h.status ? (
+                        <StatusBadge status={h.status} />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Not checked</span>
+                      )}
+                    </td>
+                    <td className="py-3 pr-4 text-xs text-muted-foreground">
+                      {new Date(h.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="max-w-[16rem] py-3 text-xs">
+                      {h.correction ? (
+                        h.correction
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="mt-8">
+          <p className="text-eyebrow">Discoveries by category</p>
+          <div className="mt-4 grid gap-2">
+            {categoryCounts.map((c) => (
+              <div
+                key={c.category}
+                className="grid grid-cols-[9rem_1fr_2rem] items-center gap-3 text-sm"
+              >
+                <span>{c.category}</span>
+                <div className="h-3 rounded-full bg-muted">
+                  <div
+                    className="h-3 rounded-full bg-primary"
+                    style={{ width: `${(c.count / maxCategory) * 100}%` }}
+                  />
+                </div>
+                <span className="text-right text-muted-foreground">{c.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <div className="mt-10 grid gap-6 lg:grid-cols-[1.1fr_1.3fr]">
         <div className="space-y-6">
           <div className="rounded-3xl bg-sage p-8">
@@ -156,6 +288,9 @@ function Journey() {
               </span>
               <span>
                 <b className="font-display text-3xl">{statuses.insufficient}</b> insufficient
+              </span>
+              <span>
+                <b className="font-display text-3xl">{statuses.not_covered}</b> not covered
               </span>
             </div>
           </div>
