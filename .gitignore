@@ -37,3 +37,6 @@ dist-ssr
 !.env.example
 *serviceAccountKey*.json
 .data/
+
+# Other hosts' build output
+.vercel/
