@@ -1,9 +1,22 @@
-import { google } from "@ai-sdk/google";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText, Output, type ModelMessage } from "ai";
 import type { z } from "zod";
 
 const PRIMARY_MODEL = process.env["GEMINI_MODEL"] || "gemini-3.5-flash-lite";
 const FALLBACK_MODELS = ["gemini-flash-lite-latest", "gemini-3.5-flash"];
+
+// Uses your own GOOGLE_GENERATIVE_AI_API_KEY when set; otherwise falls back to the
+// Netlify AI Gateway credentials that Netlify injects at runtime.
+function googleProvider() {
+  const ownKey = process.env["GOOGLE_GENERATIVE_AI_API_KEY"];
+  if (ownKey) return createGoogleGenerativeAI({ apiKey: ownKey });
+  const gatewayUrl = process.env["GOOGLE_GEMINI_BASE_URL"]?.replace(/\/+$/, "");
+  const gatewayKey = process.env["GEMINI_API_KEY"];
+  return createGoogleGenerativeAI({
+    ...(gatewayKey ? { apiKey: gatewayKey } : {}),
+    ...(gatewayUrl ? { baseURL: `${gatewayUrl}/v1beta` } : {}),
+  });
+}
 
 export class AiError extends Error {
   status: number;
@@ -20,9 +33,7 @@ export async function runStructured<T extends z.ZodType>(
   system: string,
   messages: ModelMessage[],
 ): Promise<z.infer<T>> {
-  if (!process.env["GOOGLE_GENERATIVE_AI_API_KEY"]) {
-    throw new AiError("Gemini API key is not configured.", 500);
-  }
+  const google = googleProvider();
 
   const modelsToTry = [
     PRIMARY_MODEL,

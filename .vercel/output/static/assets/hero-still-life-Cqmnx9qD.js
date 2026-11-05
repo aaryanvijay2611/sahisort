@@ -1,1 +1,0 @@
-var e=`/assets/hero-still-life-Ff8vuOYa.jpg`;export{e as t};
